@@ -29,6 +29,7 @@
 
 #include "mapcache.h"
 #include <curl/curl.h>
+#include <apr_escape.h>
 #include <apr_hash.h>
 #include <apr_strings.h>
 #include <ctype.h>
@@ -149,40 +150,6 @@ typedef struct header_cb_struct{
   char *str;
 } header_cb_struct;
 
-/* calculate the length of the string formed by key=value&, and add it to cnt */
-#ifdef _WIN32
-static int _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
-{
-#else
-static APR_DECLARE_NONSTD(int) _mapcache_key_value_strlen_callback(void *cnt, const char *key, const char *value)
-{
-#endif
-  *((int*)cnt) += strlen(key) + 2 + ((value && *value) ? strlen(value) : 0);
-  return 1;
-}
-
-/* Converts an integer value to its hex character*/
-char to_hex(char code) {
-  static char hex[] = "0123456789abcdef";
-  return hex[code & 15];
-}
-
-/* Returns a url-encoded version of str */
-char *url_encode(apr_pool_t *p, const char *str) {
-  char *buf = apr_pcalloc(p, strlen(str) * 3 + 1), *pbuf = buf;
-  while (*str) {
-    if (isalnum(*str) || *str == '-' || *str == '_' || *str == '.' || *str == '~') 
-      *pbuf++ = *str;
-    else if (*str == ' ') 
-      *pbuf++ = '+';
-    else 
-      *pbuf++ = '%', *pbuf++ = to_hex(*str >> 4), *pbuf++ = to_hex(*str & 15);
-    str++;
-  }
-  *pbuf = '\0';
-  return buf;
-}
-
 #ifdef _WIN32
 static int _mapcache_key_value_append_callback(void *cnt, const char *key, const char *value)
 {
@@ -190,17 +157,15 @@ static int _mapcache_key_value_append_callback(void *cnt, const char *key, const
 static APR_DECLARE_NONSTD(int) _mapcache_key_value_append_callback(void *cnt, const char *key, const char *value)
 {
 #endif
-#define _mystr (((header_cb_struct*)cnt)->str)
   header_cb_struct *hcs = (header_cb_struct*)cnt;
   hcs->str = apr_pstrcat(hcs->pool, hcs->str, key, "=", NULL);
   if(value && *value) {
-    hcs->str = apr_pstrcat(hcs->pool, hcs->str, url_encode(hcs->pool, value), "&", NULL);
+    hcs->str = apr_pstrcat(hcs->pool, hcs->str, apr_pescape_urlencoded(hcs->pool, value), "&", NULL);
   }
   else {
     hcs->str = apr_pstrcat(hcs->pool, hcs->str, "&", NULL);
   }
   return 1;
-#undef _mystr
 }
 
 static char _mapcache_x2c(const char *what)
